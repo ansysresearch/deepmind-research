@@ -197,20 +197,44 @@ def flatten_faces(faces):
     return np.array([item for sublist in l for item in sublist]) + 2  # pylint: disable=g-complex-comprehension
 
 
+def split_by_delimiter(ts, delimiter):
+    """Split a tensor similarly to python's `str.split` method."""
+    ts_str = tf.reshape(tf.reduce_join(tf.as_string(ts), separator=' '), [-1])
+    ts_slices = tf.string_split(
+        tf.string_split(ts_str, delimiter=str(delimiter)).values)
+
+    result = tf.SparseTensor(
+        ts_slices.indices,
+        tf.string_to_number(ts_slices.values, out_type=tf.int32),
+        ts_slices.dense_shape)
+
+    return tf.sparse_tensor_to_dense(result)
+
+# def unflatten_faces(flat_faces):
+#   """Converts from flat face sequence to a list of separate faces."""
+#   def group(seq):
+#     g = []
+#     for el in seq:
+#       if el == 0 or el == -1:
+#         yield g
+#         g = []
+#       else:
+#         g.append(el - 1)
+#     yield g
+#   outputs = list(group(flat_faces - 1))[:-1]
+#   # Remove empty faces
+#   return [o for o in outputs if len(o) > 2]
+
+
 def unflatten_faces(flat_faces):
-  """Converts from flat face sequence to a list of separate faces."""
-  def group(seq):
-    g = []
-    for el in seq:
-      if el == 0 or el == -1:
-        yield g
-        g = []
-      else:
-        g.append(el - 1)
-    yield g
-  outputs = list(group(flat_faces - 1))[:-1]
-  # Remove empty faces
-  return [o for o in outputs if len(o) > 2]
+  flat_faces = (flat_faces - 2)[:-1]
+  faces = split_by_delimiter(flat_faces, -1)
+  idxs = tf.where_v2(tf.size(faces) > 2)
+  return tf.gather_nd(faces, idxs)
+
+
+
+
 
 
 def center_vertices(vertices):
