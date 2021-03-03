@@ -52,7 +52,7 @@ After processing the raw mesh data into numpy arrays, we create a `tf.data.Datas
 shapes = ['cube']#, 'cylinder', 'cone', 'icosphere']
 shapes2 = ['cylinder', 'cylinder', 'cylinder', 'cylinder']
 ex_list = []
-for k, mesh in enumerate(shapes):
+for k, mesh in enumerate(shapes2):
   mesh_dict = data_utils.load_process_mesh(
       os.path.join('meshes', '{}.obj'.format(mesh)))
   mesh_dict['class_label'] = k
@@ -99,7 +99,7 @@ vertex_model_dataset = data_utils.make_vertex_model_dataset(
     synthetic_dataset, apply_random_shift=False)
 vertex_model_dataset = vertex_model_dataset.repeat()
 vertex_model_dataset = vertex_model_dataset.padded_batch(
-    1, padded_shapes=vertex_model_dataset.output_shapes)
+    4, padded_shapes=vertex_model_dataset.output_shapes)
 vertex_model_dataset = vertex_model_dataset.prefetch(1)
 vertex_model_batch = vertex_model_dataset.make_one_shot_iterator().get_next()
 
@@ -141,7 +141,7 @@ face_model_dataset = data_utils.make_face_model_dataset(
     synthetic_dataset, apply_random_shift=False)
 face_model_dataset = face_model_dataset.repeat()
 face_model_dataset = face_model_dataset.padded_batch(
-    1, padded_shapes=face_model_dataset.output_shapes)
+    4, padded_shapes=face_model_dataset.output_shapes)
 face_model_dataset = face_model_dataset.prefetch(1)
 face_model_batch = face_model_dataset.make_one_shot_iterator().get_next()
 
