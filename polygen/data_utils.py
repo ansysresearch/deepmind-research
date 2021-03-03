@@ -196,41 +196,85 @@ def flatten_faces(faces):
     l += [faces[-1] + [-2]]
     return np.array([item for sublist in l for item in sublist]) + 2  # pylint: disable=g-complex-comprehension
 
-
-def split_by_delimiter(ts, delimiter):
-    """Split a tensor similarly to python's `str.split` method."""
-    ts_str = tf.reshape(tf.reduce_join(tf.as_string(ts), separator=' '), [-1])
-    ts_slices = tf.string_split(
-        tf.string_split(ts_str, delimiter=str(delimiter)).values)
-
-    result = tf.SparseTensor(
-        ts_slices.indices,
-        tf.string_to_number(ts_slices.values, out_type=tf.int32),
-        ts_slices.dense_shape)
-
-    return tf.sparse_tensor_to_dense(result)
-
 # def unflatten_faces(flat_faces):
 #   """Converts from flat face sequence to a list of separate faces."""
 #   def group(seq):
+#     gs = []
 #     g = []
 #     for el in seq:
 #       if el == 0 or el == -1:
-#         yield g
+#         gs.append(g)
 #         g = []
 #       else:
 #         g.append(el - 1)
-#     yield g
+#     gs.append(g)
+#     return gs
 #   outputs = list(group(flat_faces - 1))[:-1]
 #   # Remove empty faces
 #   return [o for o in outputs if len(o) > 2]
 
 
+# def count_valid_faces(flat_faces):
+#   count = 0
+#   running = 0
+#   for f in flat_faces[:-1]:
+#     if f > 0 and f < 2:
+#       if running > 2:
+#         count = count + 1
+#       running = 0
+#     elif f > 1:
+#       running = running + 1
+#   return count
+
+
+
 def unflatten_faces(flat_faces):
-  flat_faces = (flat_faces - 2)[:-1]
-  faces = split_by_delimiter(flat_faces, -1)
-  idxs = tf.where_v2(tf.size(faces) > 2)
-  return tf.gather_nd(faces, idxs)
+  flat_faces_ = flat_faces - 2
+  gs = []
+  g = []
+  for ff in flat_faces_[:-1]:
+    if ff < 0:
+      gs.append(g)
+      g = []
+    else:
+      g.append(ff)
+  gs.append(g)
+  res = []
+  for g in gs:
+    if len(g) > 2:
+      res.append(g)
+  return res
+
+
+def count_valid_faces(flat_faces):
+  return len(unflatten_faces(flat_faces))
+
+
+
+def print_(s):
+  print()
+  print()
+  print()
+  print(s)
+  print()
+  print()
+  print()
+
+
+
+def unflatten_faces_2(flat_faces):
+  with tf.Session() as sess:
+    sess.run(tf.global_variables_initializer())
+    k = tf.py_function(count_valid_faces, [flat_faces], tf.int32)
+    j, ff = sess.run((k, flat_faces))
+    print_(j)
+    print_(ff)
+    print_(unflatten_faces(ff))
+    ret_tensor = tf.py_function(unflatten_faces, [flat_faces], [tf.int32] * j)
+    f = sess.run(ret_tensor)
+    print(f)
+    print()
+    return ret_tensor
 
 
 

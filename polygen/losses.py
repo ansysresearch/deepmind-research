@@ -69,8 +69,43 @@ from quality_utils import *
 # 		pass
 
 
+# def qtr(faces):
+# 	quad = 0.0
+# 	total = 0.0
+# 	for face in faces:
+# 		total += 1.0
+# 		if len(face) == 4:
+# 			quad += 1.0
+# 	return quad / total
+
+
+def qtr(flat_faces):
+	#print('QTR')
+	running = 0
+	quads = 0.
+	total = 0.
+	for ff in flat_faces[:-1]:
+		#print(running, ff, quads, total)
+		if ff > 0 and ff < 2: # for some reason, ff == 1 does not work
+			if running == 4:
+				quads += 1.
+			if running > 2:
+				total += 1.
+			running = 0
+		running += 1
+	if running > 2:
+		total += 1.
+	if total < 1:
+		return 0.
+	return 1. - quads / total
+
+
+
 def quad_total_ratio(f):
-	total = tf.cast(tf.shape(f)[0], tf.float32)
-	quad_locs = tf.where_v2(tf.size(f) == 4)
-	n_quads = tf.cast(tf.size(quad_locs), tf.float32)
-	return n_quads / total
+	# total = tf.cast(tf.shape(f)[0], tf.float32)
+	# quad_locs = tf.where_v2(tf.size(f) == 4)[0, :]
+	# n_quads = tf.cast(tf.size(quad_locs), tf.float32)
+	# return n_quads / total
+	return tf.py_function(qtr, [f], tf.float32)
+
+

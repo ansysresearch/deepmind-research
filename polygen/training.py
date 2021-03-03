@@ -49,8 +49,10 @@ After processing the raw mesh data into numpy arrays, we create a `tf.data.Datas
 """
 
 # Prepare synthetic dataset
+shapes = ['cube']#, 'cylinder', 'cone', 'icosphere']
+shapes2 = ['cylinder', 'cylinder', 'cylinder', 'cylinder']
 ex_list = []
-for k, mesh in enumerate(['cube', 'cylinder', 'cone', 'icosphere']):
+for k, mesh in enumerate(shapes):
   mesh_dict = data_utils.load_process_mesh(
       os.path.join('meshes', '{}.obj'.format(mesh)))
   mesh_dict['class_label'] = k
@@ -65,28 +67,29 @@ synthetic_dataset = tf.data.Dataset.from_generator(
     )
 ex = synthetic_dataset.make_one_shot_iterator().get_next()
 
-# Inspect the first mesh
-with tf.Session() as sess:
-  ex_np = sess.run(ex)
-print(ex_np)
+# # Inspect the first mesh
+# with tf.Session() as sess:
+#   ex_np = sess.run(ex)
+# print(ex_np)
 
 # # Plot the meshes
 # mesh_list = []
 # with tf.Session() as sess:
-#   for i in range(4):
+#   for i in range(1):
 #     ex_np = sess.run(ex)
 #     mesh_list.append(
 #         {'vertices': data_utils.dequantize_verts(ex_np['vertices']), 
 #          'faces': data_utils.unflatten_faces(ex_np['faces'])})
+#     data_utils.unflatten_faces_2(tf.convert_to_tensor(ex_np['faces']))
 # data_utils.plot_meshes(mesh_list, ax_lims=0.4)
 
 """## Vertex model
 
-#### Prepare the dataset for vertex model training
-We need to perform some additional processing to make the dataset ready for vertex model training. In particular, `data_utils.make_vertex_model_dataset` flattens the `[V, 3]` vertex arrays, ordering by `Z->Y->X` coordinates. It also creates masks, which are used to mask padded elements in data batches. We also add random shifts to make the modelling task more challenging.
+# #### Prepare the dataset for vertex model training
+# We need to perform some additional processing to make the dataset ready for vertex model training. In particular, `data_utils.make_vertex_model_dataset` flattens the `[V, 3]` vertex arrays, ordering by `Z->Y->X` coordinates. It also creates masks, which are used to mask padded elements in data batches. We also add random shifts to make the modelling task more challenging.
 
-#### Create a vertex model
-`modules.VertexModel` is a Sonnet module that. Calling the module on a batch of data will produce outputs which are the sequential predictions for each vertex coordinate. The basis of the vertex model is a Transformer decoder, and we specify it's parameters in `decoder_config`. 
+# #### Create a vertex model
+# `modules.VertexModel` is a Sonnet module that. Calling the module on a batch of data will produce outputs which are the sequential predictions for each vertex coordinate. The basis of the vertex model is a Transformer decoder, and we specify it's parameters in `decoder_config`. 
 
 
 """
@@ -96,7 +99,7 @@ vertex_model_dataset = data_utils.make_vertex_model_dataset(
     synthetic_dataset, apply_random_shift=False)
 vertex_model_dataset = vertex_model_dataset.repeat()
 vertex_model_dataset = vertex_model_dataset.padded_batch(
-    4, padded_shapes=vertex_model_dataset.output_shapes)
+    1, padded_shapes=vertex_model_dataset.output_shapes)
 vertex_model_dataset = vertex_model_dataset.prefetch(1)
 vertex_model_batch = vertex_model_dataset.make_one_shot_iterator().get_next()
 
@@ -138,7 +141,7 @@ face_model_dataset = data_utils.make_face_model_dataset(
     synthetic_dataset, apply_random_shift=False)
 face_model_dataset = face_model_dataset.repeat()
 face_model_dataset = face_model_dataset.padded_batch(
-    4, padded_shapes=face_model_dataset.output_shapes)
+    1, padded_shapes=face_model_dataset.output_shapes)
 face_model_dataset = face_model_dataset.prefetch(1)
 face_model_batch = face_model_dataset.make_one_shot_iterator().get_next()
 
@@ -162,30 +165,21 @@ face_model = modules.FaceModel(
     decoder_cross_attention=True,
     use_discrete_vertex_embeddings=True,
 )
-face_model_pred_dist = face_model(face_model_batch)
+face_model_pred_dist, batch = face_model(face_model_batch)
+
 face_model_loss = -tf.reduce_sum(
     face_model_pred_dist.log_prob(face_model_batch['faces']) * 
     face_model_batch['faces_mask'])
+
+masked_batch = batch['faces'] * tf.cast(batch['faces_mask'], tf.int64)
+mesh_quality_loss = tf.reduce_sum(tf.map_fn(quad_total_ratio, masked_batch, dtype=tf.float32))
+
 face_samples = face_model.sample(
     context=vertex_samples, max_sample_length=500, top_p=0.95,
     only_return_complete=False)
 print(face_model_batch)
 print(face_model_pred_dist)
 print(face_samples)
-
-
-
-### create a loss to minimimze the negative quad to total element ratio
-nqtr = tf.constant(0.0)
-for idx in range(4):
-  vertices = vertex_samples['vertices'][idx][:vertex_samples['num_vertices'][idx]]
-  print(vertices)
-  faces = face_samples['faces'][idx][:face_samples['num_face_indices'][idx]]
-  print(faces)
-  faces_unflattened = data_utils.unflatten_faces(faces)
-  print(faces_unflattened)
-  nqtr = nqtr - quad_total_ratio(faces_unflattened)
-nqtr = nqtr / 4.0
 
 
 """## Train on the synthetic data
@@ -195,7 +189,7 @@ Now that we've created vertex and face models and their respective data loaders,
 
 # Optimization settings
 learning_rate = 5e-4
-training_steps = 500
+training_steps = 150
 check_step = 5
 
 # Create an optimizer an minimize the summed log probability of the mesh 
@@ -205,14 +199,15 @@ vertex_model_optim_op = optimizer.minimize(vertex_model_loss)
 face_model_optim_op = optimizer.minimize(face_model_loss)
 
 # mesh quality optimizer
-mesh_quality_optim_op = optimizer.minimize(nqtr)
+mesh_quality_optim_op = optimizer.minimize(mesh_quality_loss)
 
 # Training loop
 with tf.Session() as sess:
   sess.run(tf.global_variables_initializer())
   for n in range(training_steps):
     if n % check_step == 0:
-      v_loss, f_loss, m_loss = sess.run((vertex_model_loss, face_model_loss, nqtr))
+      v_loss, f_loss, m_loss = sess.run((vertex_model_loss, face_model_loss, mesh_quality_loss))
+      # m_loss = sess.run(nqtr)
       print('Step {}'.format(n))
       print('Loss (vertices) {}'.format(v_loss))
       print('Loss (faces) {}'.format(f_loss))
@@ -220,7 +215,7 @@ with tf.Session() as sess:
       v_samples_np, f_samples_np, b_np = sess.run(
         (vertex_samples, face_samples, vertex_model_batch))
       mesh_list = []
-      for n in range(4):
+      for n in range(1):
         mesh_list.append(
             {
                 'vertices': v_samples_np['vertices'][n][:v_samples_np['num_vertices'][n]],
@@ -228,6 +223,8 @@ with tf.Session() as sess:
                     f_samples_np['faces'][n][:f_samples_np['num_face_indices'][n]])
             }
         )
-    sess.run((vertex_model_optim_op, face_model_optim_op))
-    sess.run(mesh_quality_optim_op)
-  data_utils.plot_meshes(mesh_list, ax_lims=0.5)
+      data_utils.plot_meshes(mesh_list, ax_lims=0.5)
+    sess.run((vertex_model_optim_op, face_model_optim_op, mesh_quality_optim_op))
+    # sess.run(mesh_quality_optim_op)
+  
+  
