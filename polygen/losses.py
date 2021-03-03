@@ -97,7 +97,7 @@ def qtr(flat_faces):
 		total += 1.
 	if total < 1:
 		return 0.
-	return 1. - quads / total
+	return 1000. * quads / total
 
 
 

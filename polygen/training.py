@@ -49,10 +49,9 @@ After processing the raw mesh data into numpy arrays, we create a `tf.data.Datas
 """
 
 # Prepare synthetic dataset
-shapes = ['cube']#, 'cylinder', 'cone', 'icosphere']
-shapes2 = ['cylinder', 'cylinder', 'cylinder', 'cylinder']
+shapes = ['cube', 'cylinder', 'cone', 'icosphere']
 ex_list = []
-for k, mesh in enumerate(shapes2):
+for k, mesh in enumerate(shapes):
   mesh_dict = data_utils.load_process_mesh(
       os.path.join('meshes', '{}.obj'.format(mesh)))
   mesh_dict['class_label'] = k
@@ -67,21 +66,21 @@ synthetic_dataset = tf.data.Dataset.from_generator(
     )
 ex = synthetic_dataset.make_one_shot_iterator().get_next()
 
-# # Inspect the first mesh
-# with tf.Session() as sess:
-#   ex_np = sess.run(ex)
-# print(ex_np)
+# Inspect the first mesh
+with tf.Session() as sess:
+  ex_np = sess.run(ex)
+print(ex_np)
 
-# # Plot the meshes
-# mesh_list = []
-# with tf.Session() as sess:
-#   for i in range(1):
-#     ex_np = sess.run(ex)
-#     mesh_list.append(
-#         {'vertices': data_utils.dequantize_verts(ex_np['vertices']), 
-#          'faces': data_utils.unflatten_faces(ex_np['faces'])})
-#     data_utils.unflatten_faces_2(tf.convert_to_tensor(ex_np['faces']))
-# data_utils.plot_meshes(mesh_list, ax_lims=0.4)
+# Plot the meshes
+mesh_list = []
+with tf.Session() as sess:
+  for i in range(1):
+    ex_np = sess.run(ex)
+    mesh_list.append(
+        {'vertices': data_utils.dequantize_verts(ex_np['vertices']), 
+         'faces': data_utils.unflatten_faces(ex_np['faces'])})
+    data_utils.unflatten_faces_2(tf.convert_to_tensor(ex_np['faces']))
+data_utils.plot_meshes(mesh_list, ax_lims=0.4)
 
 """## Vertex model
 
@@ -181,6 +180,10 @@ print(face_model_batch)
 print(face_model_pred_dist)
 print(face_samples)
 
+samples = [face_samples['faces'][n][:face_samples['num_face_indices'][n]] for n in range(4)]
+mesh_quality_loss = -tf.reduce_sum(tf.map_fn(quad_total_ratio, samples, dtype=tf.float32))
+
+
 
 """## Train on the synthetic data
 
@@ -198,8 +201,10 @@ optimizer = tf.train.AdamOptimizer(learning_rate)
 vertex_model_optim_op = optimizer.minimize(vertex_model_loss)
 face_model_optim_op = optimizer.minimize(face_model_loss)
 
-# # mesh quality optimizer
-# mesh_quality_optim_op = optimizer.minimize(mesh_quality_loss)
+# mesh quality optimizer
+mesh_quality_optim_op = optimizer.minimize(mesh_quality_loss)
+
+assert False
 
 # Training loop
 with tf.Session() as sess:
@@ -214,7 +219,7 @@ with tf.Session() as sess:
       v_samples_np, f_samples_np, b_np = sess.run(
         (vertex_samples, face_samples, vertex_model_batch))
       mesh_list = []
-      for n in range(1):
+      for n in range(4):
         mesh_list.append(
             {
                 'vertices': v_samples_np['vertices'][n][:v_samples_np['num_vertices'][n]],
