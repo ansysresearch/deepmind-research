@@ -171,8 +171,8 @@ face_model_loss = -tf.reduce_sum(
     face_model_pred_dist.log_prob(face_model_batch['faces']) * 
     face_model_batch['faces_mask'])
 
-masked_batch = batch['faces'] * tf.cast(batch['faces_mask'], tf.int64)
-mesh_quality_loss = tf.reduce_sum(tf.map_fn(quad_total_ratio, masked_batch, dtype=tf.float32))
+# masked_batch = batch['faces'] * tf.cast(batch['faces_mask'], tf.int64)
+# mesh_quality_loss = tf.reduce_sum(tf.map_fn(quad_total_ratio, masked_batch, dtype=tf.float32))
 
 face_samples = face_model.sample(
     context=vertex_samples, max_sample_length=500, top_p=0.95,
@@ -198,20 +198,19 @@ optimizer = tf.train.AdamOptimizer(learning_rate)
 vertex_model_optim_op = optimizer.minimize(vertex_model_loss)
 face_model_optim_op = optimizer.minimize(face_model_loss)
 
-# mesh quality optimizer
-mesh_quality_optim_op = optimizer.minimize(mesh_quality_loss)
+# # mesh quality optimizer
+# mesh_quality_optim_op = optimizer.minimize(mesh_quality_loss)
 
 # Training loop
 with tf.Session() as sess:
   sess.run(tf.global_variables_initializer())
   for n in range(training_steps):
     if n % check_step == 0:
-      v_loss, f_loss, m_loss = sess.run((vertex_model_loss, face_model_loss, mesh_quality_loss))
+      v_loss, f_loss = sess.run((vertex_model_loss, face_model_loss))
       # m_loss = sess.run(nqtr)
       print('Step {}'.format(n))
       print('Loss (vertices) {}'.format(v_loss))
       print('Loss (faces) {}'.format(f_loss))
-      print('Loss (quality) {}'.format(m_loss))
       v_samples_np, f_samples_np, b_np = sess.run(
         (vertex_samples, face_samples, vertex_model_batch))
       mesh_list = []
@@ -224,7 +223,7 @@ with tf.Session() as sess:
             }
         )
       data_utils.plot_meshes(mesh_list, ax_lims=0.5)
-    sess.run((vertex_model_optim_op, face_model_optim_op, mesh_quality_optim_op))
+    sess.run((vertex_model_optim_op, face_model_optim_op))
     # sess.run(mesh_quality_optim_op)
   
   
